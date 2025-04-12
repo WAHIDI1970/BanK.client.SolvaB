@@ -7,13 +7,19 @@ import os
 from sklearn.preprocessing import StandardScaler
 
 # App configuration
-st.set_page_config(page_title="🏦 Credit Scoring App", layout="wide")
-st.title("🏦 Credit Solvency Prediction")
+st.set_page_config(
+    page_title="🏦 Credit Scoring App",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Define paths - CORRECTED to match your structure
+st.title("🏦 Credit Solvency Prediction")
+st.markdown("Predict client solvency using machine learning models")
+
+# Define paths - EXACTLY matching your repository structure
 PATHS = {
-    'data': 'App/Data/scoring.sav',  # Adjusted path
-    'knn': 'App/Data/models/KNN (1).pkl',  # Full correct path
+    'data': 'App/Data/scoring.sav',
+    'knn': 'App/Data/models/KNN (1).pkl',
     'logistic': 'App/Data/models/REGLOG (1).pkl',
     'scaler': 'App/Data/models/scaler.pkl'
 }
@@ -22,7 +28,11 @@ PATHS = {
 def load_resources():
     try:
         # Verify all files exist
-        missing = [name for name, path in PATHS.items() if not os.path.exists(path)]
+        missing = []
+        for name, path in PATHS.items():
+            if not os.path.exists(path):
+                missing.append(path)
+        
         if missing:
             raise FileNotFoundError(f"Missing files: {', '.join(missing)}")
 
@@ -34,18 +44,18 @@ def load_resources():
             'scaler': joblib.load(PATHS['scaler'])
         }
         return df, models
+    
     except Exception as e:
-        st.error(f"Loading error: {str(e)}")
-        st.error("Required files and paths:")
-        st.error(f"- {PATHS['data']}")
-        st.error(f"- {PATHS['knn']} (with space and parentheses)")
-        st.error(f"- {PATHS['logistic']} (with space and parentheses)")
-        st.error(f"- {PATHS['scaler']}")
+        st.error(f"Error loading resources: {str(e)}")
+        st.error("Please verify:")
+        st.error("1. All files exist in these exact locations:")
+        for path in PATHS.values():
+            st.error(f"   - {path}")
         
-        # Debug info
-        st.error("Current directory structure:")
+        st.error("\n2. Current directory contents:")
         st.code(f"""
-        {os.listdir('.')}
+        Root: {os.listdir('.')}
+        App/: {os.listdir('App') if os.path.exists('App') else 'MISSING'}
         App/Data/: {os.listdir('App/Data') if os.path.exists('App/Data') else 'MISSING'}
         App/Data/models/: {os.listdir('App/Data/models') if os.path.exists('App/Data/models') else 'MISSING'}
         """)
@@ -89,7 +99,7 @@ def predict(input_df):
             }
         }
     except Exception as e:
-        st.error(f"Prediction failed: {str(e)}")
+        st.error(f"Prediction error: {str(e)}")
         return None
 
 if submitted:
@@ -116,7 +126,7 @@ if submitted:
         with col1:
             st.markdown("**Logistic Regression**")
             pred = "Non-Solvent 🚨" if results['logistic']['pred'] == 1 else "Solvent ✅"
-            st.metric("Status", pred)
+            st.metric("Status", pred, f"{max(results['logistic']['proba'])*100:.1f}% confidence")
             st.bar_chart(pd.DataFrame({
                 'Probability': results['logistic']['proba'],
                 'Status': ['Solvent', 'Non-Solvent']
@@ -125,23 +135,18 @@ if submitted:
         with col2:
             st.markdown("**KNN Model**")
             pred = "Non-Solvent 🚨" if results['knn']['pred'] == 1 else "Solvent ✅"
-            st.metric("Status", pred)
+            st.metric("Status", pred, f"{max(results['knn']['proba'])*100:.1f}% confidence")
             st.bar_chart(pd.DataFrame({
                 'Probability': results['knn']['proba'],
                 'Status': ['Solvent', 'Non-Solvent']
             }).set_index('Status'))
 
-# Requirements verification
-with st.expander("System Requirements"):
-    st.write("**Required packages installed:**")
-    st.code("""
-    pandas
-    joblib
-    pyreadstat
-    scikit-learn
-    streamlit
-    """)
+# Debug section
+with st.expander("System Information"):
+    st.write("**Loaded Models:**")
+    st.write(f"- KNN: {type(models['knn'])}")
+    st.write(f"- Logistic Regression: {type(models['logistic'])}")
+    st.write(f"- Scaler: {type(models['scaler'])}")
     
-    st.write("**Current directory:**", os.listdir('.'))
-    st.write("**App/Data contents:**", os.listdir('App/Data') if os.path.exists('App/Data') else "MISSING")
-    st.write("**Models directory:**", os.listdir('App/Data/models') if os.path.exists('App/Data/models') else "MISSING")
+    st.write("\n**Sample Data:**")
+    st.write(df.head(1))

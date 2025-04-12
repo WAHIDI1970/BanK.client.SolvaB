@@ -1,48 +1,75 @@
 # app.py
 import streamlit as st
+import os
+
+# Check and install required packages
+try:
+    import pandas as pd
+    import joblib
+    import pyreadstat
+    from sklearn.preprocessing import StandardScaler
+except ImportError as e:
+    st.error(f"Missing required package: {str(e)}")
+    st.info("Installing required packages... (this may take a moment)")
+    os.system("pip install pandas joblib pyreadstat scikit-learn")
+    st.experimental_rerun()
+
+# Now that packages are installed, import them properly
 import pandas as pd
 import joblib
-import os
 import pyreadstat
+from sklearn.preprocessing import StandardScaler
 
 # App configuration
 st.set_page_config(page_title="🏦 Credit Scoring App", layout="wide")
 st.title("🏦 Credit Solvency Prediction")
-st.markdown("Predict client solvency using machine learning models")
 
-# Load data and models with EXACT file paths
+# Define paths - EXACTLY matching your repository
+PATHS = {
+    'data': 'Data/scoring.sav',
+    'knn': 'models/KNN (1).pkl',
+    'logistic': 'models/REGLOG (1).pkl',
+    'scaler': 'models/scaler.pkl'
+}
+
 @st.cache_resource
 def load_resources():
     try:
-        # Load data
-        df, meta = pyreadstat.read_sav('Data/scoring.sav')
-        
-        # Load models with your exact filenames
+        # Verify all files exist
+        missing = [name for name, path in PATHS.items() if not os.path.exists(path)]
+        if missing:
+            raise FileNotFoundError(f"Missing files: {', '.join(missing)}")
+
+        # Load resources
+        df, _ = pyreadstat.read_sav(PATHS['data'])
         models = {
-            'knn': joblib.load('KNN (1).pkl'),  # With space and (1)
-            'logistic': joblib.load('REGLOG (1).pkl'),  # Your logistic model
-            'scaler': joblib.load('scaler.pkl')  # Without (1)
+            'knn': joblib.load(PATHS['knn']),
+            'logistic': joblib.load(PATHS['logistic']),
+            'scaler': joblib.load(PATHS['scaler'])
         }
         return df, models
     except Exception as e:
-        st.error(f"Error loading resources: {str(e)}")
+        st.error(f"Loading error: {str(e)}")
         st.error("Required files:")
-        st.error("- Data/scoring.sav")
-        st.error("- models/KNN (1).pkl (with space and parentheses)")
-        st.error("- models/REGLOG (1).pkl (with space and parentheses)")
-        st.error("- models/scaler.pkl")
+        st.error(f"- {PATHS['data']}")
+        st.error(f"- {PATHS['knn']} (with space and parentheses)")
+        st.error(f"- {PATHS['logistic']} (with space and parentheses)")
+        st.error(f"- {PATHS['scaler']}")
         
-        # Show what files exist
-        st.error("Current directory contents:")
-        st.error(f"Data folder: {os.listdir('Data') if os.path.exists('Data') else 'Missing'}")
-        st.error(f"Models folder: {os.listdir('models') if os.path.exists('models') else 'Missing'}")
+        # Show directory contents
+        st.error("Current directory structure:")
+        st.code(f"""
+        {os.listdir('.')}
+        Data/: {os.listdir('Data') if os.path.exists('Data') else 'MISSING'}
+        models/: {os.listdir('models') if os.path.exists('models') else 'MISSING'}
+        """)
         return None, None
 
 df, models = load_resources()
 if df is None or models is None:
     st.stop()
 
-# Input form with your variables
+# Input form
 with st.form("client_form"):
     st.header("Client Information")
     
@@ -61,19 +88,24 @@ with st.form("client_form"):
     submitted = st.form_submit_button("Predict Solvency")
 
 # Prediction function
-def predict_solvency(input_df, model_type='logistic'):
+def predict(input_df):
     try:
-        scaled_input = models['scaler'].transform(input_df)
-        model = models[model_type]
-        prediction = model.predict(scaled_input)[0]
-        proba = model.predict_proba(scaled_input)[0]
-        return prediction, proba
+        scaled = models['scaler'].transform(input_df)
+        return {
+            'logistic': {
+                'pred': models['logistic'].predict(scaled)[0],
+                'proba': models['logistic'].predict_proba(scaled)[0]
+            },
+            'knn': {
+                'pred': models['knn'].predict(scaled)[0],
+                'proba': models['knn'].predict_proba(scaled)[0]
+            }
+        }
     except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
-        return None, None
+        st.error(f"Prediction failed: {str(e)}")
+        return None
 
 if submitted:
-    # Prepare input with correct variable names
     input_data = {
         'Age': Age,
         'Marital': 1 if Marital_Status == "Single" else 2 if Marital_Status == "Married" else 3,
@@ -84,43 +116,31 @@ if submitted:
     }
     input_df = pd.DataFrame([input_data])
     
-    # Make predictions
-    log_pred, log_proba = predict_solvency(input_df, 'logistic')
-    knn_pred, knn_proba = predict_solvency(input_df, 'knn')
+    results = predict(input_df)
     
-    # Display results
-    st.subheader("Prediction Results")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Logistic Regression (REGLOG)**")
-        if log_pred == 1:
-            st.error("Non-Solvent 🚨")
-        else:
-            st.success("Solvent ✅")
-        st.metric("Confidence", f"{max(log_proba)*100:.1f}%")
-        st.bar_chart(pd.DataFrame({'Probability': log_proba, 
-                                 'Status': ['Solvent', 'Non-Solvent']}).set_index('Status'))
-    
-    with col2:
-        st.markdown("**KNN Model**")
-        if knn_pred == 1:
-            st.error("Non-Solvent 🚨")
-        else:
-            st.success("Solvent ✅")
-        st.metric("Confidence", f"{max(knn_proba)*100:.1f}%")
-        st.bar_chart(pd.DataFrame({'Probability': knn_proba, 
-                                 'Status': ['Solvent', 'Non-Solvent']}).set_index('Status'))
+    if results:
+        st.subheader("Results")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Logistic Regression**")
+            pred = "Non-Solvent 🚨" if results['logistic']['pred'] == 1 else "Solvent ✅"
+            st.metric("Status", pred, f"{results['logistic']['proba'][results['logistic']['pred']]*100:.1f}%")
+            st.bar_chart(pd.DataFrame({
+                'Probability': results['logistic']['proba'],
+                'Status': ['Solvent', 'Non-Solvent']
+            }).set_index('Status'))
+        
+        with col2:
+            st.markdown("**KNN Model**")
+            pred = "Non-Solvent 🚨" if results['knn']['pred'] == 1 else "Solvent ✅"
+            st.metric("Status", pred, f"{results['knn']['proba'][results['knn']['pred']]*100:.1f}%")
+            st.bar_chart(pd.DataFrame({
+                'Probability': results['knn']['proba'],
+                'Status': ['Solvent', 'Non-Solvent']
+            }).set_index('Status'))
 
-# Debug section
+# Debug info
 with st.expander("Technical Details"):
-    st.write("**Loaded Data:**", df.shape)
-    st.write("**Loaded Models:**")
-    st.write(f"- KNN: {type(models['knn'])} (from KNN (1).pkl)")
-    st.write(f"- Logistic: {type(models['logistic'])} (from REGLOG (1).pkl)")
-    st.write(f"- Scaler: {type(models['scaler'])}")
-    
-    st.write("**Current Directory:**", os.listdir('.'))
-    st.write("**Data Folder:**", os.listdir('Data') if os.path.exists('Data') else "Missing")
-    st.write("**Models Folder:**", os.listdir('models') if os.path.exists('models') else "Missing")
+    st.write("Loaded models:", list(models.keys()))
+    st.write("Sample data:", df.head(1))

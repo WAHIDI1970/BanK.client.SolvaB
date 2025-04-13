@@ -16,7 +16,7 @@ The model uses Logistic Regression with optimal threshold.
 @st.cache_resource
 def load_model():
     try:
-        model_data = joblib.load('REGLOG.pkl')
+        model_data = joblib.load('REGLOG (1).pkl')
         return model_data['model'], model_data['threshold']
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
